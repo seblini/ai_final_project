@@ -1,7 +1,8 @@
 import pygame
 import time
 import math
-from utils import scale_image, blit_rotate_center
+from utils import scale_image, blit_rotate_center, euclidean_distance
+from model import Network
 
 GRASS = scale_image(pygame.image.load("imgs/grass.jpg"), 2.5)
 TRACK = scale_image(pygame.image.load("imgs/track.png"), 0.9)
@@ -122,7 +123,42 @@ def move_player(player_car):
     if not moved:
         player_car.reduce_speed()
 
-def draw_beam(surface, angle, pos):
+def move_cpu(player_car, network, state):
+    actions = [
+                (0,0), (0,1), (0, 2), 
+                (1,0), (1,1), (1, 2), 
+                (2,0), (2,1), (2, 2), 
+    ]
+
+    # actions = [
+    #             (0,0), (0,1), (0, 2), 
+    #             (1,0), (0,1), (0, 2)
+    # ]
+
+    # actions = [
+    #             (1,0), (0,1), (0, 2)
+    # ]
+
+    moved = False
+
+    action = network.choose_action(state)
+
+    if actions[action][1] == 1:
+        player_car.rotate(left=True)
+    if actions[action][1] == 2:
+        player_car.rotate(right=True)
+    if actions[action][0] == 1:
+        moved = True
+        player_car.move_forward()
+    if actions[action][0] == 2:
+        moved = True
+        player_car.move_backward()
+
+    if not moved:
+        player_car.reduce_speed()
+
+def get_beam(surface, angle, pos):
+    # returns the hit position and length of a beam
     c = math.cos(math.radians(angle))
     s = math.sin(math.radians(angle))
 
@@ -149,8 +185,14 @@ def draw_beam(surface, angle, pos):
         hy = HEIGHT-1 - hit[1] if flip_y else hit[1]
         hit_pos = (hx, hy)
 
-        pygame.draw.line(surface, BLUE, pos, hit_pos)
-        pygame.draw.circle(surface, GREEN, hit_pos, 3)
+        
+    return hit_pos, euclidean_distance(pos, hit_pos)
+
+def draw_beam(surface, angle, pos):
+    hit_pos, beam_length = get_beam(surface, angle, pos)
+
+    pygame.draw.line(surface, BLUE, pos, hit_pos)
+    pygame.draw.circle(surface, GREEN, hit_pos, 3)
 
     pygame.display.update()
 
@@ -159,8 +201,20 @@ run = True
 clock = pygame.time.Clock()
 images = [(GRASS, (0, 0)), (TRACK, (0, 0)),
           (FINISH, FINISH_POSITION), (mask_surface, (0, 0))]
-# images = [(mask_surface, (0, 0))]
 player_car = PlayerCar(8, 8)
+
+time_step = 0
+total_reward = 0
+
+network = Network(
+    state_size = 6,
+    action_size = 6,
+    learning_rate = 0.001,
+    gamma = 0.9,
+    epsilon = 0.8
+)
+
+states = []
 
 while run:
     clock.tick(FPS)
@@ -168,16 +222,27 @@ while run:
     draw(WIN, images, player_car)
 
     beam_origin = player_car.x + RED_CAR.get_width() // 2, player_car.y + RED_CAR.get_height() // 2
+    beam_start_angle = -(player_car.angle + 180)
 
-    for angle in range(0, 359, 30):
+    beam_lengths = []
+
+    for angle in range(beam_start_angle + 70, beam_start_angle + 111, 20):
         draw_beam(WIN, angle, beam_origin)
+        beam_lengths.append(get_beam(WIN, angle, beam_origin)[1] / 500)
+
+    states.append([beam_lengths, player_car.vel, player_car.max_vel, time_step])
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             run = False
             break
 
-    move_player(player_car)
+    move_cpu(player_car, network, states[-1])
+
+    if time_step % 100 == 0:
+        network.train_batch(states)
+        network.update_epsilon()
+        states = []
 
     if player_car.collide(mask) != None:
         player_car.bounce()
@@ -189,6 +254,8 @@ while run:
         else:
             player_car.reset()
             print("finish")
+
+    time_step += 1
 
 
 pygame.quit()
