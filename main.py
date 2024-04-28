@@ -4,6 +4,8 @@ import math
 from utils import scale_image, blit_rotate_center, euclidean_distance
 from model import Network
 
+pygame.font.init()
+
 GRASS = scale_image(pygame.image.load("imgs/grass.jpg"), 2.5)
 TRACK = scale_image(pygame.image.load("imgs/track.png"), 0.9)
 
@@ -124,20 +126,20 @@ def move_player(player_car):
         player_car.reduce_speed()
 
 def move_cpu(player_car, network, state):
-    actions = [
-                (0,0), (0,1), (0, 2), 
-                (1,0), (1,1), (1, 2), 
-                (2,0), (2,1), (2, 2), 
-    ]
+    # actions = [
+    #             (0,0), (0,1), (0, 2), 
+    #             (1,0), (1,1), (1, 2), 
+    #             (2,0), (2,1), (2, 2), 
+    # ]
 
     # actions = [
     #             (0,0), (0,1), (0, 2), 
     #             (1,0), (0,1), (0, 2)
     # ]
 
-    # actions = [
-    #             (1,0), (0,1), (0, 2)
-    # ]
+    actions = [
+                (1,0), (1,1), (1, 2)
+    ]
 
     moved = False
 
@@ -203,59 +205,160 @@ images = [(GRASS, (0, 0)), (TRACK, (0, 0)),
           (FINISH, FINISH_POSITION), (mask_surface, (0, 0))]
 player_car = PlayerCar(8, 8)
 
-time_step = 0
-total_reward = 0
-
 network = Network(
     state_size = 6,
-    action_size = 6,
+    action_size = 3,
     learning_rate = 0.001,
     gamma = 0.9,
-    epsilon = 0.8
+    epsilon = 0.95
 )
 
-states = []
+episodes = 1000
 
-while run:
-    clock.tick(FPS)
+for episode in range(episodes):
+    time_step = 0
+    states = []
+    rewards = []
+    distance_traveled = 0
+    last_car_center = player_car.x + RED_CAR.get_width() // 2, player_car.y + RED_CAR.get_height() // 2
 
-    draw(WIN, images, player_car)
+    while run:
+        clock.tick(FPS)
 
-    beam_origin = player_car.x + RED_CAR.get_width() // 2, player_car.y + RED_CAR.get_height() // 2
-    beam_start_angle = -(player_car.angle + 180)
+        draw(WIN, images, player_car)
 
-    beam_lengths = []
+        font = pygame.font.Font('freesansbold.ttf', 32)
+        text = font.render(f'Episode:{episode}/{episodes}', True, GREEN, BLUE)
+        textRect = text.get_rect()
+        textRect.center = (130, HEIGHT - 70)
+        WIN.blit(text, textRect)
 
-    for angle in range(beam_start_angle + 70, beam_start_angle + 111, 20):
-        draw_beam(WIN, angle, beam_origin)
-        beam_lengths.append(get_beam(WIN, angle, beam_origin)[1] / 500)
+        text = font.render(f'Epsilon:{network.epsilon:.3f}', True, GREEN, BLUE)
+        textRect = text.get_rect()
+        textRect.center = (130, HEIGHT - 30)
+        WIN.blit(text, textRect)
 
-    states.append([beam_lengths, player_car.vel, player_car.max_vel, time_step])
+        car_center = player_car.x + RED_CAR.get_width() // 2, player_car.y + RED_CAR.get_height() // 2
+        beam_start_angle = -(player_car.angle + 180)
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            run = False
+        beam_lengths = []
+
+        for angle in range(beam_start_angle + 50, beam_start_angle + 131, 20):
+            draw_beam(WIN, angle, car_center)
+            beam_lengths.append(get_beam(WIN, angle, car_center)[1] / 500)
+
+        states.append([beam_lengths, player_car.vel / player_car.max_vel])
+
+        distance_traveled += euclidean_distance(last_car_center, car_center)
+        last_car_center = car_center
+
+        rewards.append([0, 0, distance_traveled])
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                run = False
+                break
+
+        move_cpu(player_car, network, states[-1])
+
+        if player_car.collide(mask) != None:
+            print('collide')
+            rewards[-1][0] = 1
+            break
+            
+        finish_poi_collide = player_car.collide(FINISH_MASK, *FINISH_POSITION)
+        if finish_poi_collide != None:
+            if finish_poi_collide[1] == 0:
+                print('collide')
+            else:
+                print('finish')
+                rewards[-1][1] = 1
             break
 
-    move_cpu(player_car, network, states[-1])
+        time_step += 1
 
-    if time_step % 100 == 0:
-        network.train_batch(states)
-        network.update_epsilon()
-        states = []
+    if run == False:
+        break
 
-    if player_car.collide(mask) != None:
-        player_car.bounce()
+    print('start training')
+    network.train_batch(states, rewards)
+    network.update_epsilon()
+    print('end training')
+    states = []
+    rewards = []
+    player_car.reset()
 
-    finish_poi_collide = player_car.collide(FINISH_MASK, *FINISH_POSITION)
-    if finish_poi_collide != None:
-        if finish_poi_collide[1] == 0:
-            player_car.bounce()
-        else:
-            player_car.reset()
-            print("finish")
+# network.save()
 
-    time_step += 1
+# network = Network(
+#     state_size = 6,
+#     action_size = 3,
+#     learning_rate = 0.001,
+#     gamma = 0.9,
+#     epsilon = 0.1
+# )
+
+# network.load()
+
+# episodes = 10000
+
+# for _ in range(episodes):
+#     time_step = 0
+#     states = []
+#     rewards = []
+#     distance_traveled = 0
+#     last_car_center = player_car.x + RED_CAR.get_width() // 2, player_car.y + RED_CAR.get_height() // 2
+
+#     while run:
+#         clock.tick(FPS)
+
+#         draw(WIN, images, player_car)
+
+#         car_center = player_car.x + RED_CAR.get_width() // 2, player_car.y + RED_CAR.get_height() // 2
+#         beam_start_angle = -(player_car.angle + 180)
+
+#         beam_lengths = []
+
+#         for angle in range(beam_start_angle + 50, beam_start_angle + 131, 20):
+#             draw_beam(WIN, angle, car_center)
+#             beam_lengths.append(get_beam(WIN, angle, car_center)[1] / 500)
+
+#         states.append([beam_lengths, player_car.vel / player_car.max_vel])
+
+#         distance_traveled += euclidean_distance(last_car_center, car_center)
+#         last_car_center = car_center
+
+#         rewards.append([0, 0, distance_traveled])
+
+#         for event in pygame.event.get():
+#             if event.type == pygame.QUIT:
+#                 run = False
+#                 break
+
+#         move_cpu(player_car, network, states[-1])
+
+#         if player_car.collide(mask) != None:
+#             print('collide')
+#             rewards[-1][0] = 1
+#             break
+            
+#         finish_poi_collide = player_car.collide(FINISH_MASK, *FINISH_POSITION)
+#         if finish_poi_collide != None:
+#             if finish_poi_collide[1] == 0:
+#                 print('collide')
+#             else:
+#                 print('finish')
+#                 rewards[-1][1] = 1
+#             break
+
+#         time_step += 1
+
+#     if run == False:
+#         break
+
+#     states = []
+#     rewards = []
+#     player_car.reset()
 
 
 pygame.quit()
