@@ -159,6 +159,8 @@ def move_cpu(player_car, network, state):
     if not moved:
         player_car.reduce_speed()
 
+    return action
+
 def get_beam(surface, angle, pos):
     # returns the hit position and length of a beam
     c = math.cos(math.radians(angle))
@@ -208,19 +210,19 @@ player_car = PlayerCar(8, 8)
 network = Network(
     state_size = 6,
     action_size = 3,
-    learning_rate = 0.001,
+    learning_rate = 0.2,
     gamma = 0.9,
-    epsilon = 0.95
+    epsilon = 0.35
 )
 
 episodes = 1000
 
 for episode in range(episodes):
     time_step = 0
-    states = []
-    rewards = []
     distance_traveled = 0
     last_car_center = player_car.x + RED_CAR.get_width() // 2, player_car.y + RED_CAR.get_height() // 2
+    prev_state = [0, 0, 0, 0, 0, 0]
+    action = 0
 
     while run:
         clock.tick(FPS)
@@ -247,45 +249,44 @@ for episode in range(episodes):
             draw_beam(WIN, angle, car_center)
             beam_lengths.append(get_beam(WIN, angle, car_center)[1] / 500)
 
-        states.append([beam_lengths, player_car.vel / player_car.max_vel])
-
         distance_traveled += euclidean_distance(last_car_center, car_center)
         last_car_center = car_center
 
-        rewards.append([0, 0, distance_traveled])
+        state = beam_lengths + [player_car.vel / player_car.max_vel]
+        reward = [0, 0, distance_traveled]
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
                 break
 
-        move_cpu(player_car, network, states[-1])
-
         if player_car.collide(mask) != None:
             print('collide')
-            rewards[-1][0] = 1
+            reward[0] = 1
             break
             
         finish_poi_collide = player_car.collide(FINISH_MASK, *FINISH_POSITION)
         if finish_poi_collide != None:
             if finish_poi_collide[1] == 0:
                 print('collide')
+                reward[0] = 1
             else:
                 print('finish')
-                rewards[-1][1] = 1
+                reward[1] = 1
             break
+
+        network.train(prev_state, action, state, reward)
+
+        action = move_cpu(player_car, network, state)
+
+        prev_state = state
 
         time_step += 1
 
     if run == False:
         break
 
-    print('start training')
-    network.train_batch(states, rewards)
     network.update_epsilon()
-    print('end training')
-    states = []
-    rewards = []
     player_car.reset()
 
 # network.save()

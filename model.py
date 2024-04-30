@@ -17,11 +17,10 @@ class Network:
             [collision, finish_line, distance_traveled]
         )
 
-    def bellman(self, state, reward):
-        return self.r(*reward) + self.gamma * max(self.q.predict(np.array([self.reshape_state(state)])))
-
-    def reshape_state(self, state):
-        return state[0] + state[1:]
+    def target_value(self, state, action, next_state, reward):
+        y = self.q.predict(np.array([state]))
+        y[0][action] = self.r(*reward) + self.gamma * max(self.q.predict(np.array([next_state]))[0])
+        return y
 
     def update_epsilon(self):
         self.epsilon = max(0.01, self.epsilon * 0.998)
@@ -32,19 +31,19 @@ class Network:
             action = np.random.randint(low=0, high=self.action_size)
         # exploit
         else:
-            action = np.argmax(self.q.predict(np.array([self.reshape_state(state)]), verbose=0))
+            action = np.argmax(self.q.predict(np.array([state]), verbose=0)[0])
         return action
 
-    def train_batch(self, states, rewards):
-        features = np.array([self.reshape_state(state) for state in states]) # flatten
-        labels = np.array([self.bellman(state, reward) for state, reward in zip(states, rewards)]) # compute labels using bellman equation
+    def train(self, state, action, next_state, reward):
+        x = np.array([state])
+        y = np.array([self.target_value(state, action, next_state, reward)]) # compute labels using bellman equation
 
         self.q.fit(
-            x = features,
-            y = labels,
+            x = x,
+            y = y,
             epochs=5,
             batch_size=64,
-            verbose=None
+            verbose=0
             )
 
     def q_model(self):
