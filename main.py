@@ -211,8 +211,8 @@ network = Network(
     state_size = 6,
     action_size = 3,
     learning_rate = 0.2,
-    gamma = 0.9,
-    epsilon = 0.35
+    gamma = 0.6,
+    epsilon = 0.3
 )
 
 episodes = 1000
@@ -289,7 +289,7 @@ for episode in range(episodes):
     network.update_epsilon()
     player_car.reset()
 
-# network.save()
+network.save()
 
 # network = Network(
 #     state_size = 6,
