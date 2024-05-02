@@ -11,10 +11,10 @@ class Network:
         self.epsilon = epsilon
         self.q = self.q_model()
 
-    def r(self, collision, finish_line, distance_traveled):
+    def r(self, collision, finish_line, distance_traveled, parallel, center):
         return np.dot(
-            [-0.1, 1, 0.01],
-            [collision, finish_line, distance_traveled]
+            [-5, 10, 0.2, -0.01, -0.01],
+            [collision, finish_line, distance_traveled, parallel, center]
         )
 
     def target_value(self, state, action, next_state, reward):

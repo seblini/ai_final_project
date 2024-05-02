@@ -45,7 +45,7 @@ class AbstractCar:
         self.max_vel = max_vel
         self.vel = 0
         self.rotation_vel = rotation_vel
-        self.angle = 0
+        self.angle = 180
         self.x, self.y = self.START_POS
         self.acceleration = 0.1
 
@@ -82,13 +82,13 @@ class AbstractCar:
 
     def reset(self):
         self.x, self.y = self.START_POS
-        self.angle = 0
+        self.angle = 180
         self.vel = 0
 
 
 class PlayerCar(AbstractCar):
     IMG = RED_CAR
-    START_POS = (180, 200)
+    START_POS = (50, 200)
 
     def reduce_speed(self):
         self.vel = max(self.vel - self.acceleration / 2, 0)
@@ -208,20 +208,20 @@ images = [(GRASS, (0, 0)), (TRACK, (0, 0)),
 player_car = PlayerCar(8, 8)
 
 network = Network(
-    state_size = 6,
+    state_size = 8,
     action_size = 3,
     learning_rate = 0.2,
     gamma = 0.6,
-    epsilon = 0.3
+    epsilon = 0.4
 )
 
-episodes = 1000
+episodes = 10000
 
 for episode in range(episodes):
     time_step = 0
     distance_traveled = 0
     last_car_center = player_car.x + RED_CAR.get_width() // 2, player_car.y + RED_CAR.get_height() // 2
-    prev_state = [0, 0, 0, 0, 0, 0]
+    prev_state = [0, 0, 0, 0, 0, 0, 0, 0]
     action = 0
 
     while run:
@@ -245,15 +245,18 @@ for episode in range(episodes):
 
         beam_lengths = []
 
-        for angle in range(beam_start_angle + 50, beam_start_angle + 131, 20):
+        for angle in range(beam_start_angle, beam_start_angle + 181, 30):
             draw_beam(WIN, angle, car_center)
             beam_lengths.append(get_beam(WIN, angle, car_center)[1] / 500)
+
+        parallel = beam_lengths[0] + beam_lengths[-1]
+        center = abs(beam_lengths[0] - beam_lengths[-1])
 
         distance_traveled += euclidean_distance(last_car_center, car_center)
         last_car_center = car_center
 
         state = beam_lengths + [player_car.vel / player_car.max_vel]
-        reward = [0, 0, distance_traveled]
+        reward = [0, 0, distance_traveled, parallel, center]
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
